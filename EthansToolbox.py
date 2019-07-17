@@ -1,4 +1,4 @@
-#wanted to make my own toolbox for simplicity
+#wanted to make my own toolbox for simplicity. This is used by EthanRampDataAnalysis.py
 
 import time
 import numpy as np
@@ -199,3 +199,62 @@ def check_mask_vs_fitorder(firstNan, order):
     mask[-1, tmp] = 0
 
     return fitColumnIndex, mask
+
+
+def old_get_threshold_mask(data, threshold):
+    """
+    get a mask with 1 after first occurance of threshold in column
+    get firstNan vector with index of first above threshold
+    both are ndarrays
+    """
+    #TODO: this works only for columns and values above threshold are masked
+    #TODO: allow for threshold on a pixel by pixel basis
+    # is threshold single value or array
+    pixelThreshold = np.size(threshold) == 1
+    # initiate mask
+    mask = np.zeros(data.shape, dtype=np.int8)
+    # set everything above threshold to NaN
+    # some values might drop below threshold again
+    # after first occurance (cannot use 0 otherwise problem with columns
+    # that have no bad values)
+    nanY = np.where(data < threshold, data, np.nan)
+
+    # get the first occurance of NaN (dfaults to int64)
+    firstNan = nanY.argmax(axis=0)
+
+    # there could be no NaN at all if there is no Nan
+    nanTester = np.max(nanY, axis=0)
+
+    # if no nans, i.e. firstNan=y.shape[0]-1, replace with y.shape[0]
+    firstNan = np.where(np.isfinite(nanTester), data.shape[0], firstNan)
+
+    # set everything after first NaN to 1 in mask to account for drops
+    # after first occurance
+    # subtracting firstNan from index array results in all good values
+    # being negative; set the others to 1
+    return np.where(np.indices(data.shape)[0]-firstNan < 0, mask, 1), firstNan
+
+def masked_polyfit(myTime, data, order, mask, firstNan, fit=False):
+    '''
+    using standard polyfit
+    '''
+    maskedY = ma.masked_array(data, mask=mask)
+    full = np.where(firstNan > order)[0]
+
+     # initialize coef array
+    # coef = np.zeros((order+1, data.shape[1]))
+    coef = ma.zeros((order+1, data.shape[1]))+np.NaN
+    coef.mask = np.ones(coef.shape)
+    coef.mask[:, full] = 0
+
+    if full.size > 0:
+        print('full shape', full.shape)
+        print('time shape', myTime.shape)
+        print('mask shape', mask.shape)
+        coef[:, full] = ma.polyfit(myTime, maskedY[:, full], order)
+    
+    if fit:
+        fitX = np.tile(myTime, (data.shape[1], 1))
+        fit = np.polyval(coef, fitX.T)
+        return coef, fit
+    return coef
